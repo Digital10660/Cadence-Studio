@@ -1,0 +1,19 @@
+# Vidéos importées par l'utilisateur et fichiers audio/transcriptions générés
+library/*
+!library/.gitkeep
+
+# Vidéos exportées
+exports/*
+!exports/.gitkeep
+
+# Fichiers temporaires Python et système
+__pycache__/
+*.py[cod]
+*.tmp
+*.tmp.flac
+.DS_Store
+Thumbs.db
+
+# On garde toujours les vidéos et images de référence des styles
+!app/refs/
+!app/refs/*
