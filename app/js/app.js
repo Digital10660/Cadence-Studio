@@ -57,16 +57,19 @@ function glueSymbols(words) {
 }
 async function transcribe() {
   if (!S.main?.hasAudio) return;
-  busy('Transcription : démarrage…', 0);
+  busy('Transcription : démarrage…', 0); const t0 = Date.now();
   const { job } = await (await fetch('/api/transcribe', { method: 'POST', body: JSON.stringify({ file: S.main.file, lang: S.lang === 'auto' ? '' : S.lang, model: S.model || '' }) })).json();
   for (;;) {
     await new Promise(r => setTimeout(r, 700));
     const j = await (await fetch('/api/job?id=' + job)).json();
     if (j.status === 'done') { S.words = glueSymbols(j.result.words); S.overrides = { kw: {}, card: {}, broll: {}, text: {} }; break; }
     if (j.status === 'error') { busyOff(); toast('Transcription impossible : ' + j.error, 6000); return; }
-    busy(`${j.stage || 'Transcription'}… ${Math.round((j.progress || 0) * 100)} %`, j.progress || 0);
+    const sec = Math.round((Date.now() - t0) / 1000);
+    if (j.stage === 'Transcription' && j.progress > 0) busy(`Transcription… ${Math.round(j.progress * 100)} %`, j.progress);
+    else busy(`${j.stage || 'Préparation'}… ${sec} s` + (j.stage === 'Chargement du modèle' ? ' (première fois : jusqu’à 1-2 min)' : j.stage === 'Transcription' ? ' (écoute de la voix)' : ''), Math.min(0.9, sec / 120));
   }
   busyOff();
+  if (!S.words.length) toast('Aucune voix détectée dans cette vidéo : ajoute un texte (bouton « Texte ») ou importe une vidéo avec de la parole.', 8000);
 }
 const saveNow = async () => {
   try {

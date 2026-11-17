@@ -485,6 +485,10 @@ def main():
     url = f"http://127.0.0.1:{PORT}"
     print(f"Cadence est lancé : {url}")
     print("Ferme cette fenêtre pour arrêter le studio.")
+    # Warm up the speech model in the background so the first video starts transcribing at once.
+    if cached_models():
+        warm = "medium" if "medium" in cached_models() else cached_models()[0]
+        threading.Thread(target=lambda: get_model(warm), daemon=True).start()
     if "--no-browser" not in sys.argv:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
