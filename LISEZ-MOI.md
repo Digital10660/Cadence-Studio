@@ -15,6 +15,18 @@ Tout tourne sur ton ordinateur : tes vidéos ne sont envoyées nulle part.
 2. Le navigateur s'ouvre sur `http://localhost:8790`. Utilise **Chrome** ou **Edge** : l'export en a besoin.
 3. Garde la fenêtre noire ouverte pendant que tu travailles. Ferme-la pour arrêter le studio.
 
+## Ton compte
+
+Au premier lancement, Cadence te demande de **créer ton compte** (nom, e-mail, mot de passe de 8 caractères minimum). Ensuite, tu te connectes simplement avec ton e-mail et ton mot de passe.
+
+- Tout est enregistré **sur cet ordinateur** (`data/cadence.db`) : le studio fonctionne **sans internet**.
+- Plusieurs personnes peuvent avoir chacune leur compte sur le même PC : chacun ne voit que ses projets, ses styles et ses kits de marque.
+- Le premier compte créé récupère automatiquement les projets déjà existants.
+- Pour changer de compte : clic sur ton nom en haut à droite > **Se déconnecter**.
+- Sauvegarde : copie le dossier `data/` (il n'est jamais envoyé sur GitHub).
+
+La synchronisation en ligne (Supabase) est prévue pour la version SaaS : le schéma est prêt dans `supabase_schema.sql`.
+
 ## Monter une vidéo
 
 1. **Projets → Monter une vidéo** : glisse ta vidéo face caméra, ou un audio de voix off.

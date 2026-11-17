@@ -541,12 +541,54 @@ $('#btnExport').addEventListener('click', async () => {
   } catch (e) { console.error(e); txt.textContent = 'Erreur pendant l’export : ' + (e.message || e); $('#expActions').innerHTML = '<button class="btn" id="expClose">Fermer</button>'; $('#expClose').onclick = () => { modal.hidden = true; }; }
 });
 
+/* ---------------------------------------------------------------- accounts (local, offline) */
+let me = null;
+function setUser(u) {
+  me = u; const n = (u.name || u.email || '?');
+  $('#userAvatar').textContent = n.trim()[0].toUpperCase(); $('#userName').textContent = n;
+  $('#menuName').textContent = n; $('#menuEmail').textContent = u.email;
+}
+function ensureAuth() {
+  return fetch('/api/auth/me').then(r => r.json()).then(({ user, hasUsers }) => {
+    if (user) { setUser(user); return user; }
+    const box = $('#auth'), form = $('#authForm'), err = $('#authErr');
+    let mode = hasUsers ? 'login' : 'register';
+    const setMode = m => {
+      mode = m;
+      form.querySelectorAll('.auth-tabs button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+      $('#fldName').hidden = m !== 'register';
+      $('#authGo').textContent = m === 'register' ? 'Créer mon compte' : 'Se connecter';
+      $('#authSub').textContent = m === 'register' ? (hasUsers ? 'Crée ton compte en 10 secondes.' : 'Bienvenue ! Crée ton compte pour commencer.') : 'Connecte-toi pour retrouver tes projets.';
+      form.password.autocomplete = m === 'register' ? 'new-password' : 'current-password';
+      err.hidden = true;
+    };
+    form.querySelectorAll('.auth-tabs button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+    setMode(mode); box.hidden = false; setTimeout(() => (mode === 'register' ? form.name : form.email).focus(), 50);
+    return new Promise(resolve => {
+      form.onsubmit = async e => {
+        e.preventDefault(); err.hidden = true; $('#authGo').disabled = true;
+        try {
+          const r = await fetch('/api/auth/' + mode, { method: 'POST', body: JSON.stringify({ email: form.email.value, password: form.password.value, name: form.name.value }) });
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.error || 'Erreur');
+          setUser(j.user); box.hidden = true; form.password.value = ''; resolve(j.user);
+        } catch (x) { err.textContent = x.message; err.hidden = false; }
+        $('#authGo').disabled = false;
+      };
+    });
+  });
+}
+$('#btnUser').addEventListener('click', e => { e.stopPropagation(); $('#userMenu').hidden = !$('#userMenu').hidden; });
+document.addEventListener('click', e => { if (!e.target.closest('#userMenu')) $('#userMenu').hidden = true; });
+$('#btnLogout').addEventListener('click', async () => { await fetch('/api/auth/logout', { method: 'POST' }); location.reload(); });
+
 /* ---------------------------------------------------------------- boot */
 (async function boot() {
   requestAnimationFrame(loop);
   renderPanel();
-  try { brands = await (await fetch('/api/brands')).json(); } catch { brands = [DEFAULT_BRAND]; }
-  try { luts = await (await fetch('/api/luts')).json(); myStyles = await (await fetch('/api/styles')).json(); } catch { }
+  me = await ensureAuth();
+  try { brands = await (await fetch('/api/brands')).json(); if (!Array.isArray(brands) || !brands.length) brands = [DEFAULT_BRAND]; } catch { brands = [DEFAULT_BRAND]; }
+  try { luts = await (await fetch('/api/luts')).json(); myStyles = await (await fetch('/api/styles')).json(); if (!Array.isArray(myStyles)) myStyles = []; } catch { }
   if (S.settings.lut) loadLut(S.settings.lut).catch(() => { });
   if (brands[0]) S.brand = structuredClone(brands[0]);
   await ensureFonts([S.brand.font, S.brand.display, S.brand.serif, S.brand.caps]);

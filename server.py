@@ -23,6 +23,9 @@ import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
+from http.cookies import SimpleCookie
+
+import db
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 APP = os.path.join(ROOT, "app")
@@ -38,6 +41,8 @@ for d in (LIB, EXP, SFX, DATA, LUTS, os.path.join(DATA, "projects")):
     os.makedirs(d, exist_ok=True)
 for c in SFX_CATEGORIES:
     os.makedirs(os.path.join(SFX, c), exist_ok=True)
+
+db.init(DATA)  # local accounts + projects (SQLite, offline)
 
 # ---------------------------------------------------------------- ffmpeg
 try:
@@ -223,9 +228,11 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     # ---------- responses
-    def send_json(self, obj, code=200):
+    def send_json(self, obj, code=200, headers=None):
         b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
         self.send_header("Cache-Control", "no-store")
@@ -287,6 +294,24 @@ class Handler(BaseHTTPRequestHandler):
                 f.write(chunk)
                 left -= len(chunk)
 
+    # ---------- accounts
+    def token(self):
+        c = SimpleCookie(self.headers.get("Cookie") or "")
+        return c["cadence_session"].value if "cadence_session" in c else None
+
+    def user(self):
+        return db.user_for(self.token())
+
+    @staticmethod
+    def cookie(token, days=db.SESSION_DAYS):
+        return {"Set-Cookie": f"cadence_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={days * 86400 if token else 0}"}
+
+    def need_user(self):
+        u = self.user()
+        if not u:
+            self.send_json({"error": "Connecte-toi pour continuer.", "auth": False}, 401)
+        return u
+
     # ---------- routing
     def do_GET(self):
         try:
@@ -318,10 +343,14 @@ class Handler(BaseHTTPRequestHandler):
                     d = os.path.join(SFX, c)
                     out[c] = [f"/sfx/{c}/{n}" for n in sorted(os.listdir(d)) if n.lower().endswith((".wav", ".mp3", ".ogg", ".m4a"))]
                 return self.send_json(out)
+            if p == "/api/auth/me":
+                return self.send_json({"user": self.user(), "hasUsers": db.has_users()})
             if p == "/api/brands":
-                return self.send_json(read_json(os.path.join(DATA, "brands.json"), DEFAULT_BRANDS))
+                u = self.need_user()
+                return u and self.send_json(db.get_doc(u["id"], "brands", DEFAULT_BRANDS))
             if p == "/api/styles":
-                return self.send_json(read_json(os.path.join(DATA, "styles.json"), []))
+                u = self.need_user()
+                return u and self.send_json(db.get_doc(u["id"], "styles", []))
             if p == "/api/luts":
                 out = []
                 for n in sorted(os.listdir(LUTS)):
@@ -341,18 +370,12 @@ class Handler(BaseHTTPRequestHandler):
                 f = os.path.normpath(os.path.join(LUTS, os.path.basename(p[6:])))
                 return self.send_file(f, cache=True)
             if p == "/api/projects":
-                d = os.path.join(DATA, "projects")
-                items = []
-                for n in os.listdir(d):
-                    if n.endswith(".json"):
-                        pr = read_json(os.path.join(d, n), {})
-                        items.append({"id": n[:-5], "name": pr.get("name", n[:-5]), "updated": os.path.getmtime(os.path.join(d, n)),
-                                      "thumb": pr.get("main", {}).get("url") if isinstance(pr.get("main"), dict) else None})
-                items.sort(key=lambda x: -x["updated"])
-                return self.send_json(items)
+                u = self.need_user()
+                return u and self.send_json(db.list_projects(u["id"]))
             if p == "/api/project":
+                u = self.need_user()
                 pid = re.sub(r"[^\w\-]", "", q.get("id", [""])[0])
-                return self.send_json(read_json(os.path.join(DATA, "projects", pid + ".json"), None))
+                return u and self.send_json(db.get_project(u["id"], pid))
             self.send_error(404)
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass
@@ -367,6 +390,20 @@ class Handler(BaseHTTPRequestHandler):
         try:
             u = urlparse(self.path)
             p, q = unquote(u.path), parse_qs(u.query)
+            if p in ("/api/auth/register", "/api/auth/login"):
+                body = json.loads(self.read_body() or b"{}")
+                try:
+                    if p.endswith("register"):
+                        token, user = db.register(body.get("email"), body.get("name"), body.get("password"), legacy_dir=DATA)
+                    else:
+                        token, user = db.login(body.get("email"), body.get("password"))
+                except db.AuthError as e:
+                    return self.send_json({"error": str(e)}, 400)
+                return self.send_json({"user": user}, headers=self.cookie(token))
+            if p == "/api/auth/logout":
+                self.read_body()
+                db.logout(self.token())
+                return self.send_json({"ok": True}, headers=self.cookie("", 0))
             if p == "/api/upload":
                 name = safe_name(q.get("name", ["fichier"])[0])
                 file = f"{uuid.uuid4().hex[:8]}_{name}"
@@ -390,8 +427,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.read_body(dest)
                 return self.send_json({"path": dest, "url": f"/exports/{name}", "name": name})
             if p == "/api/styles":
-                write_json(os.path.join(DATA, "styles.json"), json.loads(self.read_body() or b"[]"))
-                return self.send_json({"ok": True})
+                body = json.loads(self.read_body() or b"[]")
+                u = self.need_user()
+                if u:
+                    db.set_doc(u["id"], "styles", body)
+                    return self.send_json({"ok": True})
+                return
             if p == "/api/lut":  # import a .cube into the LUT library
                 name = safe_name(q.get("name", ["mon_lut.cube"])[0])
                 if not name.lower().endswith(".cube"):
@@ -399,11 +440,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.read_body(os.path.join(LUTS, name))
                 return self.send_json({"url": f"/luts/{name}", "name": os.path.splitext(name)[0].replace("_", " ")})
             if p == "/api/brands":
-                write_json(os.path.join(DATA, "brands.json"), json.loads(self.read_body() or b"[]"))
-                return self.send_json({"ok": True})
+                body = json.loads(self.read_body() or b"[]")
+                u = self.need_user()
+                if u:
+                    db.set_doc(u["id"], "brands", body)
+                    return self.send_json({"ok": True})
+                return
             if p == "/api/project":
+                body = json.loads(self.read_body() or b"{}")
+                u = self.need_user()
+                if not u:
+                    return
                 pid = re.sub(r"[^\w\-]", "", q.get("id", [""])[0]) or uuid.uuid4().hex[:10]
-                write_json(os.path.join(DATA, "projects", pid + ".json"), json.loads(self.read_body() or b"{}"))
+                if q.get("delete"):
+                    db.delete_project(u["id"], pid)
+                else:
+                    db.save_project(u["id"], pid, body)
                 return self.send_json({"ok": True, "id": pid})
             if p == "/api/open":
                 what = q.get("what", ["exports"])[0]

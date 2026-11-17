@@ -17,3 +17,6 @@ Thumbs.db
 # On garde toujours les vidéos et images de référence des styles
 !app/refs/
 !app/refs/*
+
+# Base de données locale (comptes, projets) : propre à chaque ordinateur, jamais sur GitHub
+data/

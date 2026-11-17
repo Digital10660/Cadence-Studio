@@ -30,6 +30,7 @@ if (location.protocol === 'file:') {
     <span id="saveState" class="muted small"></span>
     <button id="btnScript" class="btn ghost btn-script" title="Texte &amp; moments">Texte</button>
     <button id="btnHome" class="btn ghost">Projets</button>
+    <button id="btnUser" class="btn ghost user-chip" title="Mon compte"><span class="avatar" id="userAvatar"></span><span id="userName"></span></button>
     <button id="btnExport" class="btn primary" disabled>Exporter la vidéo</button>
   </div>
 </header>
@@ -67,6 +68,21 @@ if (location.protocol === 'file:') {
     <div id="groups" class="groups"></div>
   </aside>
 </main>
+
+<!-- accounts -->
+<div class="auth" id="auth" hidden>
+  <form class="auth-card" id="authForm" autocomplete="on">
+    <div class="auth-brand"><span class="logo-dot big"></span><div><h1>Cadence Studio</h1><p id="authSub">Connecte-toi pour retrouver tes projets.</p></div></div>
+    <div class="seg auth-tabs"><button type="button" data-mode="login" class="on">Se connecter</button><button type="button" data-mode="register">Créer un compte</button></div>
+    <label class="fld" id="fldName" hidden><span>Ton nom</span><input class="inp" name="name" autocomplete="name" placeholder="Ex. Stève"></label>
+    <label class="fld"><span>E-mail</span><input class="inp" name="email" type="email" autocomplete="email" required placeholder="toi@exemple.com"></label>
+    <label class="fld"><span>Mot de passe</span><input class="inp" name="password" type="password" autocomplete="current-password" required minlength="8" placeholder="8 caractères minimum"></label>
+    <p class="auth-err" id="authErr" hidden></p>
+    <button class="btn primary auth-go" id="authGo" type="submit">Se connecter</button>
+    <p class="muted small auth-note">Ton compte et tes projets sont enregistrés sur cet ordinateur : Cadence fonctionne même sans internet.</p>
+  </form>
+</div>
+<div class="menu" id="userMenu" hidden><div class="menu-head"><b id="menuName"></b><small id="menuEmail"></small></div><button id="btnLogout">Se déconnecter</button></div>
 
 <!-- start screen -->
 <div class="home" id="home">
